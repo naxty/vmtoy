@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/naxty/vmtoy/internal/manager"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,16 @@ func StartCmd() *cobra.Command {
 		Short: "Start a VM",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("VM name:", name)
+
+			m := manager.NewManager()
+			m.List()
+
+			if !m.Exists(name) {
+				fmt.Println("VM does not exist")
+				return
+			} else {
+				fmt.Println("VM exists")
+			}
 
 		},
 	}
