@@ -32,14 +32,13 @@ Alpine Linux implementation:
     -m 1024 \
     -smp 2 \
     -hda alpine.qcow2 \
-    -cdrom alpine-virt-3.21.0-x86_64.iso \
+    -cdrom /Users/stheno/git/dev/gofun/containers/alpine-virt-3.21.0-x86_64.iso \
     -boot d \
     -accel tcg \
-        -serial telnet:localhost:4321,server,nowait \
+    -serial telnet:localhost:4321,server,nowait \
     -nographic \
     -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
-        -device e1000,netdev=user.0 \
-            -serial /dev/pts/1
+    -device e1000,netdev=user.0
    ```
     - Trying to use telnet to connect to the VM
     - Setting up image via telnet commands
