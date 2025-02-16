@@ -1,0 +1,116 @@
+package alpine
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/naxty/vmtoy/internal/distros/common"
+)
+
+type AlpineSetup struct {
+	reader  *bufio.Reader
+	writer  io.Writer
+	timeout time.Duration
+}
+
+type InstallStep struct {
+	Command string
+	Trigger string
+	Timeout time.Duration
+}
+
+func NewAlpineSetup() *AlpineSetup {
+	return &AlpineSetup{
+		timeout: 30 * time.Second,
+	}
+}
+
+func (a *AlpineSetup) Install(processIO common.ProcessIO) error {
+	a.reader = bufio.NewReader(processIO)
+	a.writer = processIO
+
+	steps := []struct {
+		command string
+		trigger string
+		timeout time.Duration
+	}{
+		{"", "login:", 10 * time.Second},                // Wait for initial login prompt
+		{"root", "Welcome to Alpine!", 5 * time.Second}, // Login
+		{"setup-interfaces", "Available interfaces are:", 5 * time.Second},
+		{"eth0", "Ip address for eth0?", 5 * time.Second},
+		{"dhcp", "manual network configuration?", 5 * time.Second},
+		{"n", "localhost:~#", 5 * time.Second},
+
+		// Start networking
+		{"rc-service networking --quiet start", "localhost:~#", 10 * time.Second},
+
+		// Setup timezone
+		{"setup-timezone -z UTC", "localhost:~#", 5 * time.Second},
+		// Setup repositories
+		{"setup-apkrepos -f", "localhost:~#", 10 * time.Second},
+		// Setup SSH
+		{"setup-sshd -c openssh", "ok", 10 * time.Second},
+		{"echo 'new-hostname' > /etc/hostname", "localhost:~#", 5 * time.Second},
+		// Setup disk
+		{"setup-disk -m sys /dev/sda", "WARNING: Erase the above disk", 5 * time.Second},
+		{"y", "Installation is complete", 30 * time.Second},
+	}
+	fmt.Println("\n=== Starting Alpine Linux Installation ===")
+
+	for i, step := range steps {
+		fmt.Printf("\n[Step %d/%d] Executing: %s (waiting for: %s)\n",
+			i+1, len(steps), step.command, step.trigger)
+
+		if err := a.sendAndWait(step.command, step.trigger, step.timeout); err != nil {
+			return fmt.Errorf("step %d failed: %w", i+1, err)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	return nil
+}
+
+func (a *AlpineSetup) Close() error {
+	return nil
+}
+
+func (a *AlpineSetup) send(command string) error {
+	fmt.Printf("\n[SENDING] %q\n", command)
+	_, err := a.writer.Write([]byte(command + "\n"))
+	return err
+}
+
+func (a *AlpineSetup) waitForString(trigger string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var buffer strings.Builder
+
+	for time.Now().Before(deadline) {
+		b := make([]byte, 1)
+		_, err := a.reader.Read(b)
+		if err != nil {
+			if err != io.EOF {
+				return fmt.Errorf("read error: %w", err)
+			}
+			return nil
+		}
+
+		buffer.Write(b)
+		fmt.Print(string(b))
+
+		if strings.Contains(buffer.String(), trigger) {
+			return nil
+		}
+	}
+	return fmt.Errorf("timeout waiting for: %s", trigger)
+}
+
+func (a *AlpineSetup) sendAndWait(command, trigger string, timeout time.Duration) error {
+	if err := a.send(command); err != nil {
+		return fmt.Errorf("send failed: %w", err)
+	}
+	return a.waitForString(trigger, timeout)
+}
